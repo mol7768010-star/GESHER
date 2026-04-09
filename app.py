@@ -12,10 +12,10 @@ def proxy(path):
     if not target_url:
         return "Error: Missing URL_GESHER parameter", 400
 
-    # הכנת הנתונים למשלוח
+    # הכנת הנתונים למשלוח (הסרת Host כדי למנוע שגיאות ניתוב)
     method = request.method
     data = request.get_data()
-    headers = {key: value for key, value in request.headers if key.lower() != 'host'}
+    headers = {key: value for key, value in request.headers.items() if key.lower() != 'host'}
     params = {key: value for key, value in request.args.items() if key != 'URL_GESHER'}
 
     try:
@@ -27,21 +27,27 @@ def proxy(path):
             data=data,
             params=params,
             cookies=request.cookies,
-            allow_redirects=False
+            allow_redirects=False,
+            timeout=10 # מומלץ להוסיף timeout
         )
 
-        # החזרת התשובה המדויקת מהיעד למשתמש
-        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        resp_headers = [
-            (name, value) for name, value in response.raw.headers.items()
-            if name.lower() not in excluded_headers
-        ]
+        # --- התיקונים לבקשתך ---
+        
+        # 1. הגבלת אורך התשובה ל-1000 תווים
+        # אנחנו משתמשים ב-response.text כדי לעבוד עם מחרוזת
+        content_text = response.text[:1000]
 
-        return Response(response.content, response.status_code, resp_headers)
+        # 2. כפיית סוג תוכן טקסט פשוט (Plain Text) למניעת הרצת HTML
+        resp_headers = {
+            'Content-Type': 'text/plain; charset=utf-8'
+        }
+
+        # החזרת התשובה המוגבלת
+        return Response(content_text, response.status_code, resp_headers)
 
     except Exception as e:
-        return f"Error connecting to bridge: {str(e)}", 500
+        # גם הודעת השגיאה מוגבלת באורך
+        return f"Error connecting to bridge: {str(e)}"[:1000], 500
 
 if __name__ == '__main__':
-    # הרצה מקומית (לצורך בדיקה)
     app.run(port=5000)
