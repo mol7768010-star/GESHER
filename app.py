@@ -8,19 +8,23 @@ app = Flask(__name__)
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy(path):
     # --- 1. מנגנון אבטחת זמן (ApiTime) ---
-    api_time_str = request.args.get('ApiTime')
-    try:
-        if not api_time_str:
-            raise ValueError()
-        
-        api_time = float(api_time_str)
-        current_time = time.time()
-        
-        # אם ההפרש גדול מ-20 שניות - שגיאה 909
-        if abs(current_time - api_time) > 20:
+    # בדיקה האם התקבל פרמטר no=no לביטול בדיקת הזמן
+    skip_time_check = request.args.get('no') == 'no'
+    
+    if not skip_time_check:
+        api_time_str = request.args.get('ApiTime')
+        try:
+            if not api_time_str:
+                raise ValueError()
+            
+            api_time = float(api_time_str)
+            current_time = time.time()
+            
+            # אם ההפרש גדול מ-20 שניות - שגיאה 909
+            if abs(current_time - api_time) > 20:
+                return "Error 909", 403
+        except:
             return "Error 909", 403
-    except:
-        return "Error 909", 403
 
     # --- 2. איתור כתובת היעד ---
     target_url = request.args.get('URL_GESHER')
@@ -43,7 +47,8 @@ def proxy(path):
     headers = {k: v for k, v in request.headers.items() if k.lower() != 'host'}
     
     # סינון פרמטרים פנימיים (ApiTime נשלח ליעד כפי שביקשת)
-    exclude_params = {'URL_GESHER', 'plus', 'PressKey'}
+    # הוספתי את 'no' לרשימת הסינון כדי שלא יעבור הלאה לשרת היעד במידה ולא נרצה בכך
+    exclude_params = {'URL_GESHER', 'plus', 'PressKey', 'no'}
     params = {k: v for k, v in request.args.items() 
               if k not in exclude_params and not k.startswith('PressKey_')}
 
@@ -61,7 +66,6 @@ def proxy(path):
         )
 
         # --- 4. החזרת תשובה מלאה (Transparent Proxy) ---
-        # מוציאים את הכותרות החשובות משרת היעד (סוג תוכן וכו')
         excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
         resp_headers = {k: v for k, v in response.headers.items() if k.lower() not in excluded_headers}
 
