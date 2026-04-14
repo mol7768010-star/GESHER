@@ -6,40 +6,38 @@ app = Flask(__name__)
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy(path):
-    # שליפת כתובת היעד המקורית מהפרמטרים
+    # 1. ניסיון שליפת כתובת יעד בסיסית
     target_url = request.args.get('URL_GESHER')
     
-    # --- שדרוג הקוד לפי בקשתך ---
-    # בדיקה האם מופיע פרמטר plus=yes והאם קיים פרמטר PressKey
+    # 2. בדיקה האם מדובר במצב "plus" עם PressKey
     plus_mode = request.args.get('plus') == 'yes'
     press_key_value = request.args.get('PressKey')
 
     if plus_mode and press_key_value:
-        # בניית שם הפרמטר ממנו יש לשלוף את הכתובת החדשה (לדוגמה: PressKey_*-0)
+        # בניית שם הפרמטר הדינמי (למשל PressKey_9)
         lookup_param = f"PressKey_{press_key_value}"
         new_target = request.args.get(lookup_param)
         
-        # אם נמצאה כתובת בפרמטר הדינמי, נעדכן את כתובת היעד
+        # אם נמצאה כתובת בפרמטר הדינמי, היא מקבלת עדיפות
         if new_target:
             target_url = new_target
-    # ---------------------------
 
+    # 3. בדיקת תקינות - רק עכשיו בודקים אם יש לנו כתובת יעד כלשהי
     if not target_url:
         return "Error: Missing target URL parameter", 400
 
-    # הכנת הנתונים למשלוח (הסרת Host כדי למנוע שגיאות ניתוב)
+    # הכנת הנתונים למשלוח
     method = request.method
     data = request.get_data()
     headers = {key: value for key, value in request.headers.items() if key.lower() != 'host'}
     
-    # הסרת פרמטרי השליטה של ה-proxy כדי שלא יעברו לשרת היעד ב-Query String
+    # סינון פרמטרים פנימיים כדי שלא יעברו לשרת היעד
     exclude_params = {'URL_GESHER', 'plus', 'PressKey'}
-    # מסננים גם את כל הפרמטרים שמתחילים ב-PressKey_
     params = {key: value for key, value in request.args.items() 
               if key not in exclude_params and not key.startswith('PressKey_')}
 
     try:
-        # ביצוע הבקשה לכתובת היעד (המקורית או הדינמית מהשדרוג)
+        # ביצוע הבקשה
         response = requests.request(
             method=method,
             url=target_url,
@@ -51,10 +49,8 @@ def proxy(path):
             timeout=10
         )
 
-        # הגבלת אורך התשובה ל-1000 תווים
+        # הגבלת אורך התשובה והגדרת סוג תוכן כטקסט פשוט
         content_text = response.text[:1000]
-
-        # כפיית סוג תוכן טקסט פשוט למניעת הרצת HTML
         resp_headers = {
             'Content-Type': 'text/plain; charset=utf-8'
         }
